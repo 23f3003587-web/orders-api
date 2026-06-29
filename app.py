@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import time
@@ -33,17 +34,22 @@ class OrderResponse(BaseModel):
     amount: float
     created_at: Optional[float] = None
 
+@app.exception_handler(429)
+async def rate_limit_handler(request: Request, exc: HTTPException):
+    """Global handler to ensure Retry-After is always present"""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Try again later."},
+        headers={"Retry-After": str(WINDOW)}
+    )
+
 def check_rate_limit(client_id: str):
     now = time.time()
-    # Clean old requests
     rate_limits[client_id] = [ts for ts in rate_limits[client_id] if now - ts < WINDOW]
     
     if len(rate_limits[client_id]) >= RATE_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Try again later.",
-            headers={"Retry-After": str(WINDOW)}   # ← This is the fix
-        )
+        raise HTTPException(status_code=429)
+    
     rate_limits[client_id].append(now)
 
 @app.post("/orders", status_code=201)
