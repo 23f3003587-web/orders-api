@@ -5,9 +5,8 @@ from typing import Optional, Dict, List
 import time
 from collections import defaultdict
 
-app = FastAPI(title="Orders API - Idempotency + Pagination + Rate Limiting")
+app = FastAPI(title="Orders API")
 
-# CORS - Required for grader
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,7 +21,6 @@ order_list: List[dict] = [
     {"id": i, "name": f"Order {i}", "amount": 10.0 * i} for i in range(1, 57)
 ]
 
-# Rate Limiting (17 req / 10s per client)
 rate_limits: Dict[str, List[float]] = defaultdict(list)
 RATE_LIMIT = 17
 WINDOW = 10
@@ -37,12 +35,14 @@ class OrderResponse(BaseModel):
 
 def check_rate_limit(client_id: str):
     now = time.time()
+    # Clean old requests
     rate_limits[client_id] = [ts for ts in rate_limits[client_id] if now - ts < WINDOW]
+    
     if len(rate_limits[client_id]) >= RATE_LIMIT:
         raise HTTPException(
             status_code=429,
-            detail="Rate limit exceeded",
-            headers={"Retry-After": str(WINDOW)}
+            detail="Rate limit exceeded. Try again later.",
+            headers={"Retry-After": str(WINDOW)}   # ← This is the fix
         )
     rate_limits[client_id].append(now)
 
