@@ -7,6 +7,7 @@ import time
 
 app = FastAPI(title="Orders API")
 
+# Fixed CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Fixed catalog 1..56
+# Fixed catalog (1..56)
 order_list = [
     {"id": i, "name": f"Order {i}", "amount": 10.0 * i} for i in range(1, 57)
 ]
@@ -25,9 +26,11 @@ rate_limits: dict = defaultdict(list)
 RATE_LIMIT = 17
 WINDOW = 10
 
-# Rate Limit Middleware
+# Rate limit middleware (skips OPTIONS)
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
     client_id = request.headers.get("X-Client-Id", "default")
     now = time.time()
     timestamps = rate_limits[client_id]
@@ -50,8 +53,14 @@ async def create_order(idempotency_key: Optional[str] = Header(None, alias="Idem
         raise HTTPException(400, "Idempotency-Key header is required")
     if idempotency_key in idempotency_store:
         return idempotency_store[idempotency_key]
-    order_id = len(idempotency_store) + 1001
-    order = {"id": order_id, "name": f"Order {order_id}", "amount": 10.0 * order_id, "created_at": time.time()}
+    # Safe unique ID
+    order_id = 1000 + len(idempotency_store) + 1
+    order = {
+        "id": order_id,
+        "name": f"Order {order_id}",
+        "amount": 10.0 * order_id,
+        "created_at": time.time()
+    }
     idempotency_store[idempotency_key] = order
     return order
 
@@ -75,4 +84,4 @@ async def get_orders(
 
 @app.get("/")
 async def root():
-    return {"status": "ok"}
+    return {"status": "ok", "total_orders": len(order_list)}
